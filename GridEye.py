@@ -18,9 +18,9 @@ class GridEyeMapper(object):
     3. if it does overflow, expect to need to syncStream before you get good data again.
     """
 
-    PacketWidth =  134  # byes,  used for syncStream
+    PacketWidth =  134  # bytes,  used for syncStream
     
-    def __init__(self, display=True):
+    def __init__(self, display=True, interp='hamming'):
         port = Serial(port='/dev/ttyUSB0',baudrate=115200)
         #Initialize the device with '*'
         port.write('*')
@@ -28,6 +28,7 @@ class GridEyeMapper(object):
         self._start=time()
         self.numPackets=0
         self.display=display
+        self.interp=interp
         
     def  run(self):
         if self.display:
@@ -46,7 +47,7 @@ class GridEyeMapper(object):
                 print '#%s'%self.numPackets, '%f packets/sec'%(self.numPackets/delta)
 
     def start_map(self, data):
-        self.imobj = plt.imshow(data, interpolation='none')
+        self.imobj = plt.imshow(data, interpolation=self.interp)
         plt.show()
         
     def update_map(self, data):
@@ -57,7 +58,6 @@ class GridEyeMapper(object):
         port=self.port
         n=0
         while port.read(1) is not '*':
-            # print("Got something, not asterisk, continuing.")
             n=n+1
             if n > self.PacketWidth:
                 raise ValueError('Sync failed')
@@ -76,8 +76,8 @@ class GridEyeMapper(object):
 
         # Thermistor
         data=port.read(2)
-        self.chk = self.chk + sum(map(ord,data))
         temp = struct.unpack('h',str(data))
+        self.chk = self.chk + sum(map(ord,data))
 
         # array data
         data = port.read(128)
