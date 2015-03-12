@@ -125,16 +125,18 @@ class DKSB1015A(object):
 class GridEyeMapper(DKSB1015A):
     DisplayM = { True: 'start_map', 'all': 'start_map_all'}
 
-    def __init__(self, display='all', interp='hamming', *args, **kwD):
+    def __init__(self, display=True, interp='spline36', trigger=0, *args, **kwD):
         super(GridEyeMapper, self).__init__(args, kwD)
         self.display = getattr(self, self.DisplayM[display])
         self.interp=interp
-        if 1: # was to prestart the display so we dont fall behind the data stream, doesnt work yet
-            data=random.randint(60, 100, (8,8)) # be careful this doesnt skew scale factor
-            self.display(data)
+        self.triggerNum=trigger # set a trigger for a one off action based on packet #
+        data=random.randint(60, 100, (8,8)) # be careful this doesnt skew scale factor
+        self.display(data)  # brings the display up before we start grabbing data, so we dont get behind on the serial buffer
             
     def _run(self, data):
         self.display(data)
+        if self.numPackets == self.triggerNum:
+            self.save()
         
     def start_map(self, data):
         plt.ion() # allow plt.show() not to hang
@@ -146,6 +148,7 @@ class GridEyeMapper(DKSB1015A):
     def update_map(self, data):
         self.imobj.set_data(data)
         plt.draw()
+        if self.numPackets==100: self.save()
 
     def start_map_all(self, data):
         plt.ion() # allow plt.show() not to hang        
@@ -167,12 +170,12 @@ class GridEyeMapper(DKSB1015A):
         plt.draw()
             
     def save(self):
-        plt.savefig('grideye.png')
+        plt.savefig('grideye1.png')
     
 
 if __name__ == '__main__':
     if 1:
-        theMap = GridEyeMapper()
+        theMap = GridEyeMapper(trigger=100)
     else:
         theMap=DKSB1015A()
         
