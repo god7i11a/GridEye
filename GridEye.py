@@ -1,5 +1,7 @@
 from struct import unpack
-from numpy import fliplr, reshape, zeros
+from numpy import fliplr, reshape, zeros, ones, random
+from matplotlib import rc, use
+use('TkAgg')
 import matplotlib.pyplot as plt
 from time import time, sleep
 from serial import Serial
@@ -24,16 +26,19 @@ class DKSB1015A(object):
     def __init__(self, *args, **kwD):
         port = Serial(port='/dev/ttyUSB0',baudrate=115200)
         self.port=port
+        self.stopData()
 
     def startData(self):
         #Initialize the device with '*'
         self.port.flushInput()
         self.port.write('*')
+        self.port.flushOutput()
         
     def stopData(self):
         self.port.write('~')
         self.port.flushInput()
-
+        self.port.flushOutput()
+        
     def array_from_data(self, data):
         data = unpack('h'*64,str(data))
         return  fliplr(reshape(data,(8,8)))
@@ -52,12 +57,10 @@ class DKSB1015A(object):
                 print 'T=',temp[0]
                 print '#%s'%self.numPackets, '%f packets/sec'%(self.numPackets/delta)
 
-            ret=self._run(data)
-            if not ret:
-                print data
+            self._run(data)
                 
     def _run(self, data):
-        return False
+        print data
     
     def _syncStream(self):
         _read=self.port.read
@@ -103,25 +106,18 @@ class DKSB1015A(object):
     
 
 class GridEyeMapper(DKSB1015A):
-    DisplayM = {None: False, True: 'start_map', 'all': 'start_map_all'}
+    DisplayM = { True: 'start_map', 'all': 'start_map_all'}
 
     def __init__(self, display='all', interp='hamming', *args, **kwD):
         super(GridEyeMapper, self).__init__(args, kwD)
-        if display:
-            self.display = getattr(self, self.DisplayM[display])
-        else:
-            self.display=display
+        self.display = getattr(self, self.DisplayM[display])
         self.interp=interp
-        if 0: # was to prestart the display so we dont fall behind the data stream, doesnt work yet
-            data=zeros((8,8), dtype='uint16')
+        if 1: # was to prestart the display so we dont fall behind the data stream, doesnt work yet
+            data=random.randint(60, 100, (8,8)) # be careful this doesnt skew scale factor
             self.display(data)
-        
+            
     def _run(self, data):
-        ret=False
-        if self.display:
-            self.display(data)
-            ret=True
-        return ret
+        self.display(data)
         
     def start_map(self, data):
         plt.ion() # allow plt.show() not to hang
@@ -144,6 +140,7 @@ class GridEyeMapper(DKSB1015A):
             ax.set_title(interp_method)
             self.imL.append(imgObj)
         plt.show()
+        #sleep(1)
         # switch to update
         self.display=self.update_map_all
 
