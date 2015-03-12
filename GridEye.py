@@ -13,7 +13,7 @@ VERBOSE=True
 class GridEyeMapper(object):
     """
     Things to consider:
-    1. sending a '~' to shit stream off, only turn it on when we want to read.
+    1. sending a '~' to shut stream off, only turn it on when we want to read.
     2. with a more interesting event loop that takes more time, be careful not to let serial buffer fill up or overflow.
     3. if it does overflow, expect to need to syncStream before you get good data again.
     """
@@ -55,40 +55,39 @@ class GridEyeMapper(object):
         plt.draw()
     
     def _syncStream(self):
-        port=self.port
+        _read=self.port.read
         n=0
-        while port.read(1) is not '*':
+        while _read(1) is not '*':
             n=n+1
             if n > self.PacketWidth:
                 raise ValueError('Sync failed')
             continue
-        ret=port.read(2) 
+        ret=_read(2) 
         if ret!='**': # last two bytes of sync pulse
             raise ValueError('Sync failed')
-        
-        self.chk = 0 # not computed on '***'
 
     def read_packet(self):
         # sync stream
         self._syncStream()
+        chk=0
         
-        port=self.port
+        _read=self.port.read
 
         # Thermistor
-        data=port.read(2)
+        data=_read(2)
         temp = struct.unpack('h',str(data))
-        self.chk = self.chk + sum(map(ord,data))
+        chk = chk + sum(map(ord,data))
 
         # array data
-        data = port.read(128)
-        self.chk=self.chk + sum(map(ord,data))
+        data = _read(128)
+        chk=chk + sum(map(ord,data))
 
         # checksum
-        chksum = ord( port.read(1) )
-        self.chk = self.chk % 256
+        chksum = ord( _read(1) )
+        chk = chk % 256
         
-        if self.chk != chksum:
-            print 'chksumT = %d, checksumR = %d'%(chksum, self.chk)
+        if chk != chksum:
+            print 'chksumT = %d, checksumR = %d'%(chksum, chk)
             data = struct.unpack('h'*64,str(data))
             data = numpy.fliplr(numpy.reshape(data,(8,8)))
             print data
