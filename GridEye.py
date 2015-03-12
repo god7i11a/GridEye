@@ -6,6 +6,23 @@ import matplotlib.pyplot as plt
 from time import time, sleep
 from serial import Serial
 
+"""
+Basic code to grab data from a Panasonic GridEye 8x8 IR pixel device via DigiKey's DKSB1015A evaluation board.
+
+Using Matplotlib to visualize the data.
+
+More in-line comments to follow.
+
+Les Schaffer
+VP
+Designspring Inc.
+Westport CT
+
+http://www.designspring.com 
+
+
+"""
+
 interp_methods = [None, 'none', 'nearest', 'bilinear', 'bicubic', 'spline16','spline36', 'hanning', 'hamming', 'hermite',
                   'kaiser', 'quadric', 'catrom', 'gaussian', 'bessel', 'mitchell', 'sinc', 'lanczos']
 
@@ -148,6 +165,9 @@ class GridEyeMapper(DKSB1015A):
         for im in self.imL:
             im.set_data(data)
         plt.draw()
+            
+    def save(self):
+        plt.savefig('grideye.png')
     
 
 if __name__ == '__main__':
