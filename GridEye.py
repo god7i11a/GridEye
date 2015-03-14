@@ -1,5 +1,6 @@
 from struct import unpack
-from numpy import fliplr, reshape, zeros, ones, random
+import signal 
+from numpy import fliplr, reshape, zeros, ones, random, amax, amin
 from matplotlib import rc, use
 use('TkAgg')
 import matplotlib.pyplot as plt
@@ -26,7 +27,7 @@ http://www.designspring.com
 interp_methods = [None, 'none', 'nearest', 'bilinear', 'bicubic', 'spline16','spline36', 'hanning', 'hamming', 'hermite',
                   'kaiser', 'quadric', 'catrom', 'gaussian', 'bessel', 'mitchell', 'sinc', 'lanczos']
 
-VERBOSE=True
+VERBOSE=False
 
 class DKSB1015A(object):
     """
@@ -59,8 +60,27 @@ class DKSB1015A(object):
     def array_from_data(self, data):
         data = unpack('h'*64,str(data))
         return  fliplr(reshape(data,(8,8)))
+
+    def average_data(self, data):
+        if self.samples==0:
+            self.adata = data
+        elif self.samples <  self.numAvg:
+            self.adata = self.adata+data
+            
+        self.samples=self.samples+1
         
-    def  run(self):
+        if self.samples == self.numAvg:
+            self.adata = self.adata/self.numAvg
+            self.samples=0
+            return self.adata
+        else:
+            return None
+        
+    def  run(self, numAvg=1):
+        if numAvg<1: numAvg=1
+        self.numAvg = numAvg
+        self.samples=0
+        self.adata = None
         # maybe delay this until plot window is up, otherwise introduce slight delay in plot
         self.startData() 
         self.numPackets=0
@@ -74,7 +94,16 @@ class DKSB1015A(object):
                 print 'T=',temp[0]
                 print '#%s'%self.numPackets, '%f packets/sec'%(self.numPackets/delta)
 
-            self._run(data)
+            if numAvg>1:
+                ret = self.average_data(data)
+                if ret is not None:
+                    dmin = amin(self.adata)
+                    dmax = amax(self.adata)
+                    rat = float(dmax)/dmin
+                    print 'min = ',dmin, ' max = ', dmax, 'ratio = %4.3f'%rat
+                    self._run(self.adata)
+            else:
+                self._run(data)
                 
     def _run(self, data):
         print data
@@ -120,12 +149,19 @@ class DKSB1015A(object):
         self.numPackets = self.numPackets+1
 
         return data, temp
+
+    def quit(self):
+        print 'Cleaning up ...'
+        self.stopData()
     
+#def _handle(signum, frame):
+#    DKSB1015A.quit(theMap)
+#signal.signal(signal.SIGINT, _handle)
 
 class GridEyeMapper(DKSB1015A):
     DisplayM = { True: 'start_map', 'all': 'start_map_all'}
 
-    def __init__(self, display=True, interp='spline36', trigger=0, *args, **kwD):
+    def __init__(self, display=True, interp='none', trigger=0, *args, **kwD):
         super(GridEyeMapper, self).__init__(args, kwD)
         self.display = getattr(self, self.DisplayM[display])
         self.interp=interp
@@ -160,7 +196,6 @@ class GridEyeMapper(DKSB1015A):
             ax.set_title(interp_method)
             self.imL.append(imgObj)
         plt.show()
-        #sleep(1)
         # switch to update
         self.display=self.update_map_all
 
@@ -175,8 +210,8 @@ class GridEyeMapper(DKSB1015A):
 
 if __name__ == '__main__':
     if 1:
-        theMap = GridEyeMapper(trigger=100)
+        theMap = GridEyeMapper(trigger=0)
     else:
         theMap=DKSB1015A()
         
-    theMap.run()
+    theMap.run(numAvg=10)
