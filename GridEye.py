@@ -75,8 +75,9 @@ class DKSB1015A(object):
             return self.adata
         else:
             return None
-        
-    def  run(self, numAvg=1):
+
+    # set a trigger for a one off action based on packet #
+    def  run(self, numAvg=1, triggerL=(0,)):
         if numAvg<1: numAvg=1
         self.numAvg = numAvg
         self.samples=0
@@ -104,9 +105,16 @@ class DKSB1015A(object):
                     self._run(self.adata)
             else:
                 self._run(data)
+
+            if self.numPackets in triggerL:
+                self._triggerCB()
                 
-    def _run(self, data):
+                
+    def _run(self, data): # override as needed
         print data
+
+    def _triggerCB(self): # override as needed
+        pass
     
     def _syncStream(self):
         _read=self.port.read
@@ -161,18 +169,18 @@ class DKSB1015A(object):
 class GridEyeMapper(DKSB1015A):
     DisplayM = { True: 'start_map', 'all': 'start_map_all'}
 
-    def __init__(self, display=True, interp='none', trigger=0, *args, **kwD):
+    def __init__(self, display=True, interp='none', *args, **kwD):
         super(GridEyeMapper, self).__init__(args, kwD)
         self.display = getattr(self, self.DisplayM[display])
         self.interp=interp
-        self.triggerNum=trigger # set a trigger for a one off action based on packet #
         data=random.randint(60, 100, (8,8)) # be careful this doesnt skew scale factor
         self.display(data)  # brings the display up before we start grabbing data, so we dont get behind on the serial buffer
             
     def _run(self, data):
         self.display(data)
-        if self.numPackets == self.triggerNum:
-            self.save()
+
+    def _triggerCB(self):
+        self.save()
         
     def start_map(self, data):
         plt.ion() # allow plt.show() not to hang
@@ -184,7 +192,6 @@ class GridEyeMapper(DKSB1015A):
     def update_map(self, data):
         self.imobj.set_data(data)
         plt.draw()
-        if self.numPackets==100: self.save()
 
     def start_map_all(self, data):
         plt.ion() # allow plt.show() not to hang        
@@ -205,13 +212,17 @@ class GridEyeMapper(DKSB1015A):
         plt.draw()
             
     def save(self):
-        plt.savefig('grideye1.png')
+        TimeStamp =   datetime.datetime.now().isoformat().replace(':', '-').split('.')[0]    
+        fn = 'Pics/grideye-%s.png'%TimeStamp
+        print 'Saving to %s (numPackets = %d)'%(fn, self.numPackets)
+        plt.savefig(fn)
     
 
 if __name__ == '__main__':
+    import datetime
     if 1:
-        theMap = GridEyeMapper(trigger=0)
+        theMap = GridEyeMapper()
     else:
         theMap=DKSB1015A()
         
-    theMap.run(numAvg=10)
+    theMap.run(numAvg=10, triggerL=(100, 200))
