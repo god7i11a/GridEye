@@ -1,6 +1,7 @@
 from struct import unpack
 import signal 
-from numpy import fliplr, reshape, zeros, ones, random, amax, amin
+from numpy import fliplr, reshape, zeros, ones, random, amax, amin, argmax, where
+from numpy.linalg import norm
 from matplotlib import rc, use
 use('TkAgg')
 import matplotlib.pyplot as plt
@@ -45,7 +46,7 @@ class DKSB1015A(object):
         port = Serial(port='/dev/ttyUSB0',baudrate=115200)
         self.port=port
         self.stopData()
-
+        
     def startData(self):
         #Initialize the device with '*'
         self.port.flushInput()
@@ -64,27 +65,66 @@ class DKSB1015A(object):
     def average_data(self, data):
         if self.samples==0:
             self.adata = data
-        elif self.samples <  self.numAvg:
+        else:
             self.adata = self.adata+data
             
         self.samples=self.samples+1
         
         if self.samples == self.numAvg:
-            self.adata = self.adata/self.numAvg
+            if self.numAvg>1: self.adata = self.adata/self.numAvg
             self.samples=0
-            return self.adata
+            return True
         else:
-            return None
+            return False
 
+    def motion_detect(self):
+        # simple derivative in 8x8 space
+        if self.olddata is None:
+            self.olddata=self.adata
+            self.motion=False
+            return
+        # compute distance
+        diff = self.adata - self.olddata
+        if VERBOSE:
+            print self.olddata
+            print self.adata
+            print diff
+        # compute Froebenius norm
+        dp = norm(diff, 'fro')
+        if dp> 30.: self.motion=True
+        if dp<15.: self.motion=False
+        print 'motion = ', dp
+        self.olddata=self.adata
+
+    def occupancy_detect_single_pixel(self):
+        # single pixel max detect; could use Froebenius norm here too
+        dmin = amin(self.adata)
+        dmax = amax(self.adata)
+        rat = float(dmax)/dmin
+        loc = where(self.adata==dmax)
+        loc=(loc[0][0], loc[1][0])
+        print 'min = ',dmin, ' max = ', dmax, 'ratio = %4.3f'%rat, 'max x,y = ', loc
+        # hysteresis:
+        if rat > 45: self.occupancy=True
+        if rat< 25: self.occupancy=False
+    
+    def occupancy_detect_froebenius_norm(self):
+        # single pixel max detect; could use Froebenius norm here too
+        occ=norm(self.adata)
+        print 'occ = ', occ
+        # needs background subtraction
+    
     # set a trigger for a one off action based on packet #
     def  run(self, numAvg=1, triggerL=(0,)):
         if numAvg<1: numAvg=1
         self.numAvg = numAvg
         self.samples=0
+        self.occupancy=False
         self.adata = None
         # maybe delay this until plot window is up, otherwise introduce slight delay in plot
         self.startData() 
         self.numPackets=0
+        self.olddata=None
         self._startT=time()
         # thread this???? 
         while 1:
@@ -95,16 +135,11 @@ class DKSB1015A(object):
                 print 'T=',temp[0]
                 print '#%s'%self.numPackets, '%f packets/sec'%(self.numPackets/delta)
 
-            if numAvg>1:
-                ret = self.average_data(data)
-                if ret is not None:
-                    dmin = amin(self.adata)
-                    dmax = amax(self.adata)
-                    rat = float(dmax)/dmin
-                    print 'min = ',dmin, ' max = ', dmax, 'ratio = %4.3f'%rat
-                    self._run(self.adata)
-            else:
-                self._run(data)
+            ret = self.average_data(data)
+            if ret:
+                self.occupancy_detect_single_pixel()
+                self.motion_detect()
+                self._run(self.adata)
 
             if self.numPackets in triggerL:
                 self._triggerCB()
@@ -225,4 +260,4 @@ if __name__ == '__main__':
     else:
         theMap=DKSB1015A()
         
-    theMap.run(numAvg=10, triggerL=(100, 200))
+    theMap.run(numAvg=10, triggerL=(0,))
