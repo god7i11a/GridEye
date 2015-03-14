@@ -77,7 +77,7 @@ class DKSB1015A(object):
         else:
             return False
 
-    def motion_detect(self):
+    def motion_detect(self, show=False):
         # simple derivative in 8x8 space
         if self.olddata is None:
             self.olddata=self.adata
@@ -93,20 +93,20 @@ class DKSB1015A(object):
         dp = norm(diff, 'fro')
         if dp> 30.: self.motion=True
         if dp<15.: self.motion=False
-        print 'motion = ', dp
+        if VERBOSE or show: print 'motion = ', dp
         self.olddata=self.adata
 
-    def occupancy_detect_single_pixel(self):
+    def occupancy_detect_single_pixel(self, show=False):
         # single pixel max detect; could use Froebenius norm here too
         dmin = amin(self.adata)
         dmax = amax(self.adata)
         rat = float(dmax)/dmin
         loc = where(self.adata==dmax)
         loc=(loc[0][0], loc[1][0])
-        print 'min = ',dmin, ' max = ', dmax, 'ratio = %4.3f'%rat, 'max x,y = ', loc
+        if VERBOSE or show: print 'min = ',dmin, ' max = ', dmax, 'ratio = %4.3f'%rat, 'max x,y = ', loc
         # hysteresis:
-        if rat > 45: self.occupancy=True
-        if rat< 25: self.occupancy=False
+        if rat > 1.5: self.occupancy=True
+        if rat< 1.3: self.occupancy=False
     
     def occupancy_detect_froebenius_norm(self):
         # single pixel max detect; could use Froebenius norm here too
@@ -220,12 +220,14 @@ class GridEyeMapper(DKSB1015A):
     def start_map(self, data):
         plt.ion() # allow plt.show() not to hang
         self.imobj = plt.imshow(data, interpolation=self.interp)
+        plt.title('Occupied = ??  / Motion = ??')
         plt.show()
         # switch to update
         self.display=self.update_map
         
     def update_map(self, data):
         self.imobj.set_data(data)
+        plt.title('Occupied = %s    /    Motion = %s'%(self.occupancy, self.motion) )
         plt.draw()
 
     def start_map_all(self, data):
