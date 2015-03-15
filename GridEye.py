@@ -1,6 +1,6 @@
 from struct import unpack
 import signal 
-from numpy import fliplr, reshape, zeros, ones, random, amax, amin, argmax, where
+from numpy import fliplr, reshape, zeros, ones, random, amax, amin, argmax, where, average
 from numpy.linalg import norm
 from matplotlib import rc, use
 use('TkAgg')
@@ -22,6 +22,9 @@ Westport CT
 
 http://www.designspring.com 
 
+
+motion detection schemes:
+1. http://www-staff.it.uts.edu.au/~massimo/BackgroundSubtractionReview-Piccardi.pdf
 
 """
 
@@ -91,9 +94,9 @@ class DKSB1015A(object):
             print diff
         # compute Froebenius norm
         dp = norm(diff, 'fro')
-        if dp> 30.: self.motion=True
-        if dp<15.: self.motion=False
-        if VERBOSE or show: print 'motion = ', dp
+        if dp> 20. and self.occupancy: self.motion=True
+        if dp<13.: self.motion=False
+        if VERBOSE or show: print 'motion = %5.3f'%dp
         self.olddata=self.adata
 
     def occupancy_detect_single_pixel(self, show=False):
@@ -105,17 +108,18 @@ class DKSB1015A(object):
         loc=(loc[0][0], loc[1][0])
         if VERBOSE or show: print 'min = ',dmin, ' max = ', dmax, 'ratio = %4.3f'%rat, 'max x,y = ', loc
         # hysteresis:
-        if rat > 1.5: self.occupancy=True
-        if rat< 1.3: self.occupancy=False
+        if rat > 1.4: self.occupancy=True
+        if rat< 1.25: self.occupancy=False
     
-    def occupancy_detect_froebenius_norm(self):
-        # single pixel max detect; could use Froebenius norm here too
-        occ=norm(self.adata)
-        print 'occ = ', occ
+    def occupancy_detect_froebenius_norm(self, show=False):
         # needs background subtraction
+        occ=norm(self.adata - average(self.adata), 'fro')
+        if show: print 'occ = ', occ
+        if occ > 30.: self.occupancy=True
+        if occ < 25.: self.occupancy=False
     
     # set a trigger for a one off action based on packet #
-    def  run(self, numAvg=1, triggerL=(0,)):
+    def  run(self, numAvg=1, triggerL=(0,), show=False):
         if numAvg<1: numAvg=1
         self.numAvg = numAvg
         self.samples=0
@@ -137,8 +141,11 @@ class DKSB1015A(object):
 
             ret = self.average_data(data)
             if ret:
-                self.occupancy_detect_single_pixel()
-                self.motion_detect()
+                if 0:
+                    self.occupancy_detect_single_pixel(show)
+                else:
+                    self.occupancy_detect_froebenius_norm(show)
+                self.motion_detect(show)
                 self._run(self.adata)
 
             if self.numPackets in triggerL:
@@ -262,4 +269,4 @@ if __name__ == '__main__':
     else:
         theMap=DKSB1015A()
         
-    theMap.run(numAvg=10, triggerL=(0,))
+    theMap.run(numAvg=20, triggerL=(0,), show=True)
