@@ -84,9 +84,8 @@ class DKSB1015A(object):
         # simple derivative in 8x8 space
         if self.olddata is None:
             self.olddata=self.adata
-            self.motion=False
             return
-        # compute distance
+        # compute distance (Q: should we use current running average or instantaneous?)
         diff = self.adata - self.olddata
         if VERBOSE:
             print self.olddata
@@ -94,10 +93,26 @@ class DKSB1015A(object):
             print diff
         # compute Froebenius norm
         dp = norm(diff, 'fro')
+        # depends strongly on averaging. for low sample count, need higher #, > 2
         if dp> 20. and self.occupancy: self.motion=True
         if dp<13.: self.motion=False
         if VERBOSE or show: print 'motion = %5.3f'%dp
         self.olddata=self.adata
+
+    def motion_detect_current_frame(self, show=False):
+        # simple derivative in 8x8 space
+        # compute distance (Q: should we use current running average or instantaneous?)
+        diff = self.current_frame-self.adata
+        if VERBOSE:
+            print self.current_frame
+            print self.adata
+            print diff
+        # compute Froebenius norm
+        dp = norm(diff, 'fro')
+        # depends strongly on averaging. for low sample count, need higher #, > 2
+        if dp> 25. and self.occupancy: self.motion=True
+        if dp<20.: self.motion=False
+        if VERBOSE or show: print 'motion = %5.3f'%dp
 
     def occupancy_detect_single_pixel(self, show=False):
         # single pixel max detect; could use Froebenius norm here too
@@ -124,6 +139,7 @@ class DKSB1015A(object):
         self.numAvg = numAvg
         self.samples=0
         self.occupancy=False
+        self.motion=False
         self.adata = None
         # maybe delay this until plot window is up, otherwise introduce slight delay in plot
         self.startData() 
@@ -133,19 +149,22 @@ class DKSB1015A(object):
         # thread this???? 
         while 1:
             data,temp=self.read_packet()
-            data=self.array_from_data(data)
+            self.current_frame=self.array_from_data(data)
             if VERBOSE:
                 delta= time()-self._startT
                 print 'T=',temp[0]
-                print '#%s'%self.numPackets, '%f packets/sec'%(self.numPackets/delta)
+                print '#%s'%self.numPackets, '%6.3f packets/sec'%(self.numPackets/delta)
 
-            ret = self.average_data(data)
+            ret = self.average_data(self.current_frame)
             if ret:
                 if 0:
                     self.occupancy_detect_single_pixel(show)
                 else:
                     self.occupancy_detect_froebenius_norm(show)
-                self.motion_detect(show)
+                if 0:
+                    self.motion_detect(show)
+                else:
+                    self.motion_detect_current_frame(show)
                 self._run(self.adata)
 
             if self.numPackets in triggerL:
@@ -269,4 +288,4 @@ if __name__ == '__main__':
     else:
         theMap=DKSB1015A()
         
-    theMap.run(numAvg=20, triggerL=(0,), show=True)
+    theMap.run(numAvg=10, triggerL=(0,), show=True)
