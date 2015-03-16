@@ -85,7 +85,7 @@ class DKSB1015A(object):
         if self.olddata is None:
             self.olddata=self.adata
             return
-        # compute distance (Q: should we use current running average or instantaneous?)
+        # compute distance 
         diff = self.adata - self.olddata
         if VERBOSE:
             print self.olddata
@@ -101,7 +101,7 @@ class DKSB1015A(object):
 
     def motion_detect_current_frame(self, show=False):
         # simple derivative in 8x8 space
-        # compute distance (Q: should we use current running average or instantaneous?)
+        # compute distance 
         diff = self.current_frame-self.adata
         if VERBOSE:
             print self.current_frame
@@ -161,10 +161,11 @@ class DKSB1015A(object):
                     self.occupancy_detect_single_pixel(show)
                 else:
                     self.occupancy_detect_froebenius_norm(show)
-                if 0:
+                if 1:
                     self.motion_detect(show)
                 else:
                     self.motion_detect_current_frame(show)
+                    
                 self._run(self.adata)
 
             if self.numPackets in triggerL:
