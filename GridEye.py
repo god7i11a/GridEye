@@ -31,7 +31,14 @@ motion detection schemes:
 interp_methods = [None, 'none', 'nearest', 'bilinear', 'bicubic', 'spline16','spline36', 'hanning', 'hamming', 'hermite',
                   'kaiser', 'quadric', 'catrom', 'gaussian', 'bessel', 'mitchell', 'sinc', 'lanczos']
 
-VERBOSE=False
+VERBOSE=True
+
+class DeviceError(Exception):
+    pass
+class SyncError(DeviceError):
+    pass
+class ChecksumError(DeviceError):
+    pass
 
 class DKSB1015A(object):
     """
@@ -132,46 +139,63 @@ class DKSB1015A(object):
         if show: print 'occ = ', occ
         if occ > 30.: self.occupancy=True
         if occ < 25.: self.occupancy=False
+
+    def step(self):
+        # warning: if this function is not called frequently enough,
+        # the serial buffer will fill up and you will not have current
+        # readings.
+        try: # shaves some microseconds off the event loop
+            data,temp=self.read_packet()
+        except DeviceError, e:
+            print e
+            # just try again next step
+            return
+
+        if VERBOSE:
+            delta= time()-self._startT
+            print 'T=',temp[0]
+            print '#%s'%self.numPackets, '%6.3f packets/sec'%(self.numPackets/delta)
+
+        self.current_frame=self.array_from_data(data)
+        ret = self.average_data(self.current_frame)
+        if ret:
+            if 0:
+                self.occupancy_detect_single_pixel(self.show)
+            else:
+                self.occupancy_detect_froebenius_norm(self.show)
+            if 1:
+                self.motion_detect(self.show)
+            else:
+                self.motion_detect_current_frame(self.show)
+
+            self._run(self.adata)
+
+        if self.numPackets in self.triggerL:
+            self._triggerCB()
     
     # set a trigger for a one off action based on packet #
-    def  run(self, numAvg=1, triggerL=(0,), show=False):
+    def  run(self, numAvg=1, triggerL=(0,), show=False, doLoop=True):
         if numAvg<1: numAvg=1
         self.numAvg = numAvg
+        self.triggerL=triggerL
+        self.show=show
         self.samples=0
+        self.numPackets=0
         self.occupancy=False
         self.motion=False
         self.adata = None
+        self.olddata=None
         # maybe delay this until plot window is up, otherwise introduce slight delay in plot
         self.startData() 
-        self.numPackets=0
-        self.olddata=None
         self._startT=time()
         # thread this???? 
-        while 1:
-            data,temp=self.read_packet()
-            self.current_frame=self.array_from_data(data)
-            if VERBOSE:
-                delta= time()-self._startT
-                print 'T=',temp[0]
-                print '#%s'%self.numPackets, '%6.3f packets/sec'%(self.numPackets/delta)
+        while doLoop:
+            self.step()
 
-            ret = self.average_data(self.current_frame)
-            if ret:
-                if 0:
-                    self.occupancy_detect_single_pixel(show)
-                else:
-                    self.occupancy_detect_froebenius_norm(show)
-                if 1:
-                    self.motion_detect(show)
-                else:
-                    self.motion_detect_current_frame(show)
-                    
-                self._run(self.adata)
-
-            if self.numPackets in triggerL:
-                self._triggerCB()
-                
-                
+    def prep(self, *args, **kwD):
+        kwD['doLoop']=False
+        self._run(args, kwD)
+            
     def _run(self, data): # override as needed
         print data
 
@@ -184,11 +208,11 @@ class DKSB1015A(object):
         while _read(1) is not '*':
             n=n+1
             if n > self.PacketWidth:
-                raise ValueError('Sync failed')
+                raise SyncError("Sync failed: did not find '*' in PacketWidth bytes")
             continue
-        ret=_read(2) 
+        ret=_read(2)
         if ret!='**': # last two bytes of sync pulse
-            raise ValueError('Sync failed')
+            raise SyncError("Sync failed: last two bytes not '**'")
 
     def read_packet(self):
         # sync stream
@@ -209,12 +233,11 @@ class DKSB1015A(object):
         # checksum
         chksum = ord( _read(1) )
         chk = chk % 256
-        
         if chk != chksum:
             print 'chksumT = %d, checksumR = %d'%(chksum, chk)
             print self.array_from_data(data)
             # could just go back to syncStream and try again later, and return no data
-            raise ValueError('Bad checksum')
+            raise ChecksumError('Bad checksum')
         
         self.numPackets = self.numPackets+1
 
